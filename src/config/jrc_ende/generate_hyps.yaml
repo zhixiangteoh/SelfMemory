@@ -1,5 +1,5 @@
 ## path
-data_path: ../data/jrc_ende/test.jsonl
+data_path: ../data/ende/test.jsonl
 memory_path: null
 output_path: null
 memory_encoding: null
