@@ -26,6 +26,7 @@ from transformers import (
     AutoTokenizer,
     Adafactor,
     BartTokenizer,
+    BartModel
 )
 
 ## own
@@ -229,9 +230,7 @@ class ConditionalGenerator(LightningModule):
 
     def configure_model(self):
         ## tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.hparams.pretrained_model_path
-        )
+        self.tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
         self.vocab_size = len(self.tokenizer)
         ## model
         if self.hparams.memory_dir is not None:
@@ -263,9 +262,7 @@ class ConditionalGenerator(LightningModule):
                     )
         else:
             ## vanilla seq2seq
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                self.hparams.pretrained_model_path
-            )
+            self.model = BartModel.from_pretrained("facebook/bart-base")
 
         self.model.resize_token_embeddings(len(self.tokenizer))
 
