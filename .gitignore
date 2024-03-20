@@ -6,3 +6,4 @@ wandb
 
 # don't include the data directory
 data/
+.vscode
