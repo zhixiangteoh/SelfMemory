@@ -1,56 +1,49 @@
-import json, os, time, argparse, warnings, time, yaml, shutil
+import argparse
+import json
+import os
+import shutil
+import time
+import warnings
 from functools import partial
-
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from os import system as shell
 
-## torch
+import pytorch_lightning as pl
 import torch
 import torch.distributed as dist
-
-## lightning
-import pytorch_lightning as pl
+import yaml
 from pytorch_lightning import LightningModule
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSummary
 from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks import (
-    ModelSummary,
-    ModelCheckpoint,
-    EarlyStopping,
-)
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
-
-warnings.filterwarnings("ignore", category=PossibleUserWarning)
-## transformers
 from transformers import (
+    Adafactor,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
-    Adafactor,
+    BartForConditionalGeneration,
+    BartModel,
     BartTokenizer,
-    BartModel
 )
 
-## own
-from utils.utils import (
-    LabelSmoother,
-    get_remain_time,
-    get_gpu_usage,
-)
-from utils.metrics_utils import (
-    get_rouge_score,
-    get_bleu_score,
-    get_nltk_bleu_score,
-    get_distinct_score,
-)
-from utils.optim_utils import get_inverse_sqrt_schedule_with_warmup
 from model import (
-    DualEncoderPegasusForConditionalGeneration,
     DualEncoderBartForConditionalGeneration,
+    DualEncoderPegasusForConditionalGeneration,
     DualEncoderTransformerForConditionalGeneration,
 )
+from utils.metrics_utils import (
+    get_bleu_score,
+    get_distinct_score,
+    get_nltk_bleu_score,
+    get_rouge_score,
+)
+from utils.optim_utils import get_inverse_sqrt_schedule_with_warmup
+from utils.utils import LabelSmoother, get_gpu_usage, get_remain_time
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
 
 class MemoryDataset(torch.utils.data.Dataset):
-
     def __init__(
         self,
         data,
@@ -93,9 +86,7 @@ def collate_fct(
         max_length=max_trg_len,
         return_attention_mask=False,
     )
-    tokenized_trg["input_ids"][
-        tokenized_trg["input_ids"] == tokenizer.pad_token_id
-    ] = -100
+    tokenized_trg["input_ids"][tokenized_trg["input_ids"] == tokenizer.pad_token_id] = -100
 
     has_memory = "memory" in samples[0].keys()
     if not has_memory:
@@ -170,7 +161,7 @@ class ConditionalGenerator(LightningModule):
     def add_model_specific_args(parent_parser):
 
         parser = parent_parser.add_argument_group("model_args")
-        ## data
+        # data
         parser.add_argument("--data_dir")
         parser.add_argument("--config_path")
         parser.add_argument("--memory_dir")
@@ -179,9 +170,9 @@ class ConditionalGenerator(LightningModule):
         parser.add_argument("--trg")
         parser.add_argument("--train_max_src_len", type=int)
         parser.add_argument("--train_max_trg_len", type=int)
-        ## model
+        # model
         parser.add_argument("--pretrained_model_path")
-        ## generation
+        # generation
         parser.add_argument("--num_return_sequences", type=int)
         parser.add_argument("--num_beam_groups", type=int)
         parser.add_argument("--num_beams", type=int)
@@ -194,7 +185,7 @@ class ConditionalGenerator(LightningModule):
         parser.add_argument("--top_p", type=float)
         parser.add_argument("--temperature", type=float)
         parser.add_argument("--do_sample", type=bool)
-        ## training_parameters
+        # training_parameters
         parser.add_argument("--lr", type=float)
         parser.add_argument("--warmup_steps", type=int)
         parser.add_argument("--weight_decay", type=float)
@@ -229,12 +220,12 @@ class ConditionalGenerator(LightningModule):
         self.losses = []
 
     def configure_model(self):
-        ## tokenizer
+        # tokenizer
         self.tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
         self.vocab_size = len(self.tokenizer)
-        ## model
+        # model
         if self.hparams.memory_dir is not None:
-            ## retrieval-aug
+            # retrieval-aug
             if self.hparams.memory_encoding == "concate":
                 self.model = AutoModelForSeq2SeqLM.from_pretrained(
                     self.hparams.pretrained_model_path
@@ -242,27 +233,21 @@ class ConditionalGenerator(LightningModule):
 
             elif self.hparams.memory_encoding == "separate":
                 if "pegasus" in self.hparams.pretrained_model_path:
-                    self.model = (
-                        DualEncoderPegasusForConditionalGeneration.from_pretrained(
-                            self.hparams.pretrained_model_path
-                        )
+                    self.model = DualEncoderPegasusForConditionalGeneration.from_pretrained(
+                        self.hparams.pretrained_model_path
                     )
                 elif "bart" in self.hparams.pretrained_model_path:
                     # config = BartConfig.from_pretrained(self.hparams.pretrained_model_path)
-                    self.model = (
-                        DualEncoderBartForConditionalGeneration.from_pretrained(
-                            self.hparams.pretrained_model_path
-                        )
+                    self.model = DualEncoderBartForConditionalGeneration.from_pretrained(
+                        self.hparams.pretrained_model_path
                     )
                 elif "transformer" in self.hparams.pretrained_model_path:
-                    self.model = (
-                        DualEncoderTransformerForConditionalGeneration.from_pretrained(
-                            self.hparams.pretrained_model_path
-                        )
+                    self.model = DualEncoderTransformerForConditionalGeneration.from_pretrained(
+                        self.hparams.pretrained_model_path
                     )
         else:
-            ## vanilla seq2seq
-            self.model = BartModel.from_pretrained("facebook/bart-base")
+            # vanilla seq2seq
+            self.model = BartForConditionalGeneration.from_pretrained("facebook/bart-base")
 
         self.model.resize_token_embeddings(len(self.tokenizer))
 
@@ -305,9 +290,7 @@ class ConditionalGenerator(LightningModule):
         output = self.model(
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
-            decoder_input_ids=self.model.prepare_decoder_input_ids_from_labels(
-                labels=labels
-            ),
+            decoder_input_ids=self.model.prepare_decoder_input_ids_from_labels(labels=labels),
             **memory_kwargs,
         )
         loss = torch.nn.functional.cross_entropy(
@@ -351,7 +334,7 @@ class ConditionalGenerator(LightningModule):
             dist.all_gather_object(all_rank_outputs, outputs)
             outputs = [
                 x for y in all_rank_outputs for x in y
-            ]  ## all_rank_output[i]: i-th batch output
+            ]  # all_rank_output[i]: i-th batch output
         single_batch_output_cnt = len(outputs[0])
         ret = [[] for _ in range(single_batch_output_cnt)]
         for idx in range(single_batch_output_cnt):
@@ -361,7 +344,8 @@ class ConditionalGenerator(LightningModule):
 
     def test_epoch_end(self, outputs):
         self.log("v_num", self.logger.version)
-        log_dir = str(self.trainer.log_dir)  ## Super Important here to save log_dir
+        # Super Important here to save log_dir
+        log_dir = str(self.trainer.log_dir)
         if self.hparams.do_generation:
             hyps, refs, loss = self.merge(outputs)
             hyps = [x for y in hyps for x in y]
@@ -374,14 +358,10 @@ class ConditionalGenerator(LightningModule):
 
         if self.trainer.is_global_zero:
             if self.hparams.do_generation:
-                with open(
-                    os.path.join(log_dir, "test_hyps.txt"), "w", encoding="utf-8"
-                ) as f:
+                with open(os.path.join(log_dir, "test_hyps.txt"), "w", encoding="utf-8") as f:
                     for h in hyps[: self.test_data_cnt]:
                         f.write(h.replace("\n", " ") + "\n")
-                with open(
-                    os.path.join(log_dir, "test_refs.txt"), "w", encoding="utf-8"
-                ) as f:
+                with open(os.path.join(log_dir, "test_refs.txt"), "w", encoding="utf-8") as f:
                     for r in refs[: self.test_data_cnt]:
                         f.write(r.replace("\n", " ") + "\n")
             model_type = os.path.basename(self.hparams.pretrained_model_path)
@@ -396,9 +376,7 @@ class ConditionalGenerator(LightningModule):
             self.eval_generation(hyps, refs, "valid")
         else:
             loss = self.merge(outputs)
-        self.log(
-            "valid_ppl", torch.mean(torch.exp(torch.tensor(loss))), sync_dist=False
-        )
+        self.log("valid_ppl", torch.mean(torch.exp(torch.tensor(loss))), sync_dist=False)
         self.log("valid_loss", torch.mean(torch.tensor(loss)), sync_dist=False)
 
     def on_train_start(self) -> None:
@@ -415,10 +393,7 @@ class ConditionalGenerator(LightningModule):
             self.losses = []
             msg += f"lr:{optimizer.param_groups[0]['lr']:e} "
             msg += f"remaining:{get_remain_time(self.train_start_time,self.trainer.estimated_stepping_batches,self.global_step)} "
-            if (
-                "valid_" + self.hparams.eval_metrics
-                in self.trainer.callback_metrics.keys()
-            ):
+            if "valid_" + self.hparams.eval_metrics in self.trainer.callback_metrics.keys():
                 msg += f"valid_{self.hparams.eval_metrics}:{self.trainer.callback_metrics['valid_'+self.hparams.eval_metrics]:.4f} "
             self.print(msg)
 
@@ -430,9 +405,7 @@ class ConditionalGenerator(LightningModule):
             warmup_init=False,
             lr=self.hparams.lr,
         )
-        lr_scheduler = get_inverse_sqrt_schedule_with_warmup(
-            optimizer, self.hparams.warmup_steps
-        )
+        lr_scheduler = get_inverse_sqrt_schedule_with_warmup(optimizer, self.hparams.warmup_steps)
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -448,9 +421,7 @@ class ConditionalGenerator(LightningModule):
             additional_kwargs = {}
             if "memory_input_ids" in batch.keys():
                 additional_kwargs["memory_input_ids"] = batch["memory_input_ids"]
-                additional_kwargs["memory_attention_mask"] = batch[
-                    "memory_attention_mask"
-                ]
+                additional_kwargs["memory_attention_mask"] = batch["memory_attention_mask"]
             if self.hparams.num_return_sequences is None:
                 num_return_sequences = 1
             else:
@@ -465,14 +436,10 @@ class ConditionalGenerator(LightningModule):
                 input_ids=batch["input_ids"],
                 attention_mask=batch["attention_mask"],
                 max_length=(
-                    self.hparams.gen_max_len + 2
-                    if self.hparams.gen_max_len is not None
-                    else None
+                    self.hparams.gen_max_len + 2 if self.hparams.gen_max_len is not None else None
                 ),
                 min_length=(
-                    self.hparams.gen_min_len + 1
-                    if self.hparams.gen_min_len is not None
-                    else None
+                    self.hparams.gen_min_len + 1 if self.hparams.gen_min_len is not None else None
                 ),
                 no_repeat_ngram_size=self.hparams.no_repeat_ngram_size,
                 num_beams=self.hparams.num_beams,
@@ -492,30 +459,20 @@ class ConditionalGenerator(LightningModule):
                 )
                 for g in output
             ]
-            if (
-                self.hparams.num_beam_groups is not None
-                and self.hparams.num_beam_groups > 1
-            ):
-                num_return_candidates = int(
-                    num_return_sequences / self.hparams.num_beam_groups
-                )
-                hyps = [
-                    hyps[i] for i in range(len(hyps)) if i % num_return_candidates == 0
-                ]
+            if self.hparams.num_beam_groups is not None and self.hparams.num_beam_groups > 1:
+                num_return_candidates = int(num_return_sequences / self.hparams.num_beam_groups)
+                hyps = [hyps[i] for i in range(len(hyps)) if i % num_return_candidates == 0]
         return hyps
 
     @staticmethod
     def reorder_ddp(all_rank_outputs):
-        ## this function can only do with only 1 hyp
+        # this function can only do with only 1 hyp
         rank_cnt = dist.get_world_size()
         num_data_per_rank = int(len(all_rank_outputs) / rank_cnt)
         output = []
         for idx in range(num_data_per_rank):
             output.extend(
-                [
-                    all_rank_outputs[i]
-                    for i in range(idx, len(all_rank_outputs), num_data_per_rank)
-                ]
+                [all_rank_outputs[i] for i in range(idx, len(all_rank_outputs), num_data_per_rank)]
             )
         return output
 
@@ -536,7 +493,7 @@ class ConditionalGenerator(LightningModule):
             mem_path = os.path.join(self.hparams.memory_dir, _split + ".txt")
             memory = [x.strip() for x in open(mem_path, encoding="utf-8").readlines()]
 
-        ## dialog data
+        # dialog data
         if "context" in data[0].keys():
             special_tokens_dict = {"additional_special_tokens": ["[EOU]"]}
             self.tokenizer.add_special_tokens(special_tokens_dict)
@@ -545,7 +502,7 @@ class ConditionalGenerator(LightningModule):
             for idx in range(len(data)):
                 data[idx]["context"] = " [EOU] ".join(data[idx]["context"])
 
-            ## persona feature
+            # persona feature
             if "persona" in data[0].keys():
                 for idx in range(len(data)):
                     persona = " [EOU] ".join(data[idx]["persona"])
@@ -559,7 +516,7 @@ class ConditionalGenerator(LightningModule):
 
     def setup(self, stage):
         if stage == "fit":
-            self.train_data_cnt, self.train_dataset = self.load_data("train")
+            self.train_data_cnt, self.train_dataset = self.load_data("train_small")
             self.valid_data_cnt, self.valid_dataset = self.load_data("dev")
         # elif stage == 'valid':
         elif stage == "test":
@@ -598,7 +555,7 @@ class ConditionalGenerator(LightningModule):
 
 if __name__ == "__main__":
 
-    ## args
+    # args
     parser = argparse.ArgumentParser()
     parser.add_argument("--zero_shot", action="store_true")
     parser.add_argument("--do_not_train", action="store_true")
@@ -612,30 +569,28 @@ if __name__ == "__main__":
     for k, v in config.items():
         if getattr(args, k) is None:
             setattr(args, k, v)
-    ## seed
+    # seed
     pl.seed_everything(args.seed, workers=True)
 
-    ## model
+    # model
     model = ConditionalGenerator(**vars(args))
 
-    ## strategy
+    # strategy
     strategy = None
     if args.accelerator == "gpu" and torch.cuda.device_count() > 1:
         strategy = DDPStrategy(find_unused_parameters=False)
 
-    ## callbacks
+    # callbacks
     monitor = "valid_" + args.eval_metrics
     mode = "max" if args.eval_metrics != "ppl" else "min"
     callbacks = []
-    callbacks.append(
-        ModelCheckpoint(save_top_k=args.save_top_k, monitor=monitor, mode=mode)
-    )
+    callbacks.append(ModelCheckpoint(save_top_k=args.save_top_k, monitor=monitor, mode=mode))
     if args.early_stop_patience > -1:
         callbacks.append(
             EarlyStopping(monitor=monitor, mode=mode, patience=args.early_stop_patience)
         )
 
-    ## trainer
+    # trainer
     trainer = pl.Trainer.from_argparse_args(
         args,
         callbacks=callbacks,
