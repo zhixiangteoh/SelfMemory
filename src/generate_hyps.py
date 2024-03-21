@@ -1,59 +1,50 @@
-import json, os, time, argparse, warnings, time, yaml
+import argparse
+import json
+import os
+import time
+import warnings
 from functools import partial
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# os.environ['CUDA_VISIBLE_DEVICES']='1'
-## torch
+import pytorch_lightning as pl
 import torch
 import torch.distributed as dist
-
-## lightning
-import pytorch_lightning as pl
+import yaml
 from pytorch_lightning import LightningModule
+from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary
 from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks import (
-    ModelSummary,
-    ModelCheckpoint,
-)
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
-
-warnings.filterwarnings("ignore", category=PossibleUserWarning)
-## transformers
 from transformers import (
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
-    BartModel,
     BartForConditionalGeneration,
+    BartModel,
     BartTokenizer,
 )
 
-## own
-from utils.utils import (
-    LabelSmoother,
-    get_remain_time,
-)
-from utils.metrics_utils import (
-    get_rouge_score,
-    get_bleu_score,
-)
-from utils.optim_utils import get_inverse_sqrt_schedule_with_warmup
-from utils.ddp_utils import (
-    UnevenSequentialDistributedSampler,
-)
 from model import (
-    DualEncoderPegasusForConditionalGeneration,
     DualEncoderBartForConditionalGeneration,
+    DualEncoderPegasusForConditionalGeneration,
     DualEncoderTransformerForConditionalGeneration,
 )
-from train_generator import (
-    MemoryDataset,
-    collate_fct,
-    ConditionalGenerator,
-)
+from train_generator import ConditionalGenerator, MemoryDataset, collate_fct
+from utils.ddp_utils import UnevenSequentialDistributedSampler
+from utils.metrics_utils import get_bleu_score, get_rouge_score
+from utils.optim_utils import get_inverse_sqrt_schedule_with_warmup
+from utils.utils import LabelSmoother, get_remain_time
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# os.environ['CUDA_VISIBLE_DEVICES']='1'
+# torch
+
+# lightning
+
+warnings.filterwarnings("ignore", category=PossibleUserWarning)
+# transformers
+
+# own
 
 
 class MemoryDataset(torch.utils.data.Dataset):
-
     def __init__(
         self,
         data,
@@ -86,7 +77,7 @@ class Generator(ConditionalGenerator):
     def add_model_specific_args(parent_parser):
 
         parser = parent_parser.add_argument_group("model_args")
-        ## data
+        # data
         parser.add_argument(
             "--data_path",
         )
@@ -102,9 +93,9 @@ class Generator(ConditionalGenerator):
         )
         parser.add_argument("--train_max_src_len", type=int)
         parser.add_argument("--train_max_trg_len", type=int)
-        ## model
+        # model
         parser.add_argument("--pretrained_model_path", required=False)
-        ## generation
+        # generation
         parser.add_argument("--num_return_sequences", type=int)
         parser.add_argument("--num_beam_groups", type=int)
         parser.add_argument("--num_beams", type=int)
@@ -117,7 +108,7 @@ class Generator(ConditionalGenerator):
         parser.add_argument("--top_p", type=float)
         parser.add_argument("--temperature", type=float)
         parser.add_argument("--do_sample", type=bool)
-        ## training_parameters
+        # training_parameters
         parser.add_argument("--per_device_eval_batch_size", type=int)
         parser.add_argument("--eval_metrics", default="rouge1")
         parser.add_argument("--logging_steps", type=int)
@@ -126,17 +117,15 @@ class Generator(ConditionalGenerator):
         return parent_parser
 
     def configure_model(self):
-        ## tokenizer
+        # tokenizer
         if self.hparams.pretrained_model_path is not None:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.hparams.pretrained_model_path
-            )
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hparams.pretrained_model_path)
         else:
             self.tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
         self.vocab_size = len(self.tokenizer)
-        ## model
+        # model
         if self.hparams.memory_path is not None:
-            ## retrieval-aug
+            # retrieval-aug
             if self.hparams.memory_encoding == "concate":
                 if self.hparams.pretrained_model_path is not None:
                     self.model = AutoModelForSeq2SeqLM.from_pretrained(
@@ -152,38 +141,30 @@ class Generator(ConditionalGenerator):
             elif self.hparams.memory_encoding == "separate":
                 if self.hparams.pretrained_model_path is not None:
                     if "pegasus" in self.hparams.pretrained_model_path:
-                        self.model = (
-                            DualEncoderPegasusForConditionalGeneration.from_pretrained(
-                                self.hparams.pretrained_model_path
-                            )
+                        self.model = DualEncoderPegasusForConditionalGeneration.from_pretrained(
+                            self.hparams.pretrained_model_path
                         )
                     elif "bart" in self.hparams.pretrained_model_path:
                         # config = BartConfig.from_pretrained(self.hparams.pretrained_model_path)
-                        self.model = (
-                            DualEncoderBartForConditionalGeneration.from_pretrained(
-                                self.hparams.pretrained_model_path
-                            )
+                        self.model = DualEncoderBartForConditionalGeneration.from_pretrained(
+                            self.hparams.pretrained_model_path
                         )
                     elif "transformer" in self.hparams.pretrained_model_path:
                         self.model = DualEncoderTransformerForConditionalGeneration.from_pretrained(
                             self.hparams.pretrained_model_path
                         )
                 else:
-                    self.model = (
-                        DualEncoderBartForConditionalGeneration.from_pretrained(
-                            "facebook/bart-base"
-                        )
+                    self.model = DualEncoderBartForConditionalGeneration.from_pretrained(
+                        "facebook/bart-base"
                     )
         else:
-            ## vanilla seq2seq
+            # vanilla seq2seq
             if self.hparams.pretrained_model_path is not None:
                 self.model = AutoModelForSeq2SeqLM.from_pretrained(
                     self.hparams.pretrained_model_path
                 )
             else:
-                self.model = BartForConditionalGeneration.from_pretrained(
-                    "facebook/bart-base"
-                )
+                self.model = BartForConditionalGeneration.from_pretrained("facebook/bart-base")
 
         self.model.resize_token_embeddings(len(self.tokenizer))
 
@@ -210,8 +191,7 @@ class Generator(ConditionalGenerator):
     def setup(self, stage):
         if stage == "test":
             data = [
-                json.loads(x)
-                for x in open(self.hparams.data_path, encoding="utf-8").readlines()
+                json.loads(x) for x in open(self.hparams.data_path, encoding="utf-8").readlines()
             ]
             self.test_data_cnt = len(data)
         memory = None
@@ -223,7 +203,7 @@ class Generator(ConditionalGenerator):
             for idx in range(len(data)):
                 data[idx]["context"] = " [EOU] ".join(data[idx]["context"])
 
-            ## persona feature
+            # persona feature
             if "persona" in data[0].keys():
                 for idx in range(len(data)):
                     persona = " [EOU] ".join(data[idx]["persona"])

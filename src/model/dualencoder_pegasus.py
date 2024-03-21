@@ -1,6 +1,8 @@
-from transformers.models.pegasus.modeling_pegasus import *
 from dataclasses import dataclass
+
 from transformers.modeling_outputs import BaseModelOutput
+from transformers.models.pegasus.modeling_pegasus import *
+
 
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
     """
@@ -15,13 +17,14 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
     return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
+
 @dataclass
 class DualEncoderOutput(BaseModelOutput):
-    src_last_hidden_state:torch.Tensor=None
-    memory_last_hidden_state:torch.Tensor=None
+    src_last_hidden_state: torch.Tensor = None
+    memory_last_hidden_state: torch.Tensor = None
+
 
 class DualPegasusEncoder(PegasusEncoder):
-
     def forward(
         self,
         input_ids=None,
@@ -32,7 +35,7 @@ class DualPegasusEncoder(PegasusEncoder):
         inputs_embeds=None,
         output_attentions=None,
         output_hidden_states=None,
-        return_dict=None,        
+        return_dict=None,
     ):
         src_outputs = super().forward(
             input_ids=input_ids,
@@ -55,14 +58,13 @@ class DualPegasusEncoder(PegasusEncoder):
         )
 
         return DualEncoderOutput(
-            src_last_hidden_state = src_outputs.last_hidden_state,
-            memory_last_hidden_state = memory_outputs.last_hidden_state,
+            src_last_hidden_state=src_outputs.last_hidden_state,
+            memory_last_hidden_state=memory_outputs.last_hidden_state,
         )
 
 
-
 class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
-    def __init__(self,config):
+    def __init__(self, config):
         super().__init__(config)
         self.memory_attn = PegasusAttention(
             self.embed_dim,
@@ -71,7 +73,7 @@ class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
             is_decoder=True,
         )
         self.memory_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -138,7 +140,9 @@ class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
                 past_key_value=cross_attn_past_key_value,
                 output_attentions=output_attentions,
             )
-            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+            hidden_states = nn.functional.dropout(
+                hidden_states, p=self.dropout, training=self.training
+            )
             hidden_states = residual + hidden_states
 
             # add cross-attn to positions 3,4 of present_key_value tuple
@@ -160,7 +164,9 @@ class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
                 past_key_value=memory_attn_past_key_value,
                 output_attentions=output_attentions,
             )
-            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+            hidden_states = nn.functional.dropout(
+                hidden_states, p=self.dropout, training=self.training
+            )
             hidden_states = residual + hidden_states
 
             # add cross-attn to positions 3,4 of present_key_value tuple
@@ -170,7 +176,9 @@ class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
         residual = hidden_states
         hidden_states = self.final_layer_norm(hidden_states)
         hidden_states = self.activation_fn(self.fc1(hidden_states))
-        hidden_states = nn.functional.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+        hidden_states = nn.functional.dropout(
+            hidden_states, p=self.activation_dropout, training=self.training
+        )
         hidden_states = self.fc2(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
@@ -189,8 +197,10 @@ class DualCrossAttnPegasusDecoderLayer(PegasusDecoderLayer):
 class DualCrossAttnPegasusDecoder(PegasusDecoder):
     def __init__(self, config: PegasusConfig, embed_tokens: Optional[nn.Embedding] = None):
         super().__init__(config, embed_tokens)
-        self.layers = nn.ModuleList([DualCrossAttnPegasusDecoderLayer(config) for _ in range(config.decoder_layers)])
-    
+        self.layers = nn.ModuleList(
+            [DualCrossAttnPegasusDecoderLayer(config) for _ in range(config.decoder_layers)]
+        )
+
     def forward(
         self,
         input_ids=None,
@@ -273,26 +283,36 @@ class DualCrossAttnPegasusDecoder(PegasusDecoder):
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (
+            output_attentions if output_attentions is not None else self.config.output_attentions
+        )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+            raise ValueError(
+                "You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time"
+            )
         elif input_ids is not None:
             input_shape = input_ids.size()
             input_ids = input_ids.view(-1, input_shape[-1])
         elif inputs_embeds is not None:
             input_shape = inputs_embeds.size()[:-1]
         else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+            raise ValueError(
+                "You have to specify either decoder_input_ids or decoder_inputs_embeds"
+            )
 
         # past_key_values_length
-        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+        past_key_values_length = (
+            past_key_values[0][0].shape[2] if past_key_values is not None else 0
+        )
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
@@ -304,11 +324,15 @@ class DualCrossAttnPegasusDecoder(PegasusDecoder):
         # expand encoder attention mask
         if encoder_hidden_states is not None and encoder_attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
-        
+            encoder_attention_mask = _expand_mask(
+                encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
+            )
+
         if memory_hidden_states is not None and memory_attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            memory_attention_mask = _expand_mask(memory_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
+            memory_attention_mask = _expand_mask(
+                memory_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
+            )
 
         # embed positions
         positions = self.embed_positions(input_shape, past_key_values_length)
@@ -320,11 +344,15 @@ class DualCrossAttnPegasusDecoder(PegasusDecoder):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        all_cross_attentions = () if (output_attentions and encoder_hidden_states is not None) else None
+        all_cross_attentions = (
+            () if (output_attentions and encoder_hidden_states is not None) else None
+        )
         next_decoder_cache = () if use_cache else None
 
         # check if head_mask/cross_attn_head_mask has a correct number of layers specified if desired
-        for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]):
+        for attn_mask, mask_name in zip(
+            [head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]
+        ):
             if attn_mask is not None:
                 if attn_mask.size()[0] != len(self.layers):
                     raise ValueError(
@@ -404,7 +432,13 @@ class DualCrossAttnPegasusDecoder(PegasusDecoder):
         if not return_dict:
             return tuple(
                 v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_cross_attentions]
+                for v in [
+                    hidden_states,
+                    next_cache,
+                    all_hidden_states,
+                    all_self_attns,
+                    all_cross_attentions,
+                ]
                 if v is not None
             )
         return BaseModelOutputWithPastAndCrossAttentions(
@@ -428,7 +462,7 @@ class DualEncoderPegasusModel(PegasusModel):
 
         # Initialize weights and apply final processing
         self.post_init()
-    
+
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
@@ -469,9 +503,13 @@ class DualEncoderPegasusModel(PegasusModel):
         [1, 4, 1024]
         ```"""
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (
+            output_attentions if output_attentions is not None else self.config.output_attentions
+        )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -527,7 +565,7 @@ class DualEncoderPegasusModel(PegasusModel):
             encoder_hidden_states=None,
             encoder_attentions=None,
         )
-    
+
 
 class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration):
     def __init__(self, config: PegasusConfig):
@@ -535,7 +573,7 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
         self.model = DualEncoderPegasusModel(config)
         # Initialize weights and apply final processing
         self.post_init()
-    
+
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
@@ -561,7 +599,9 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
 
         if labels is not None:
             if use_cache:
-                logger.warning("The `use_cache` argument is changed to `False` since `labels` is provided.")
+                logger.warning(
+                    "The `use_cache` argument is changed to `False` since `labels` is provided."
+                )
             use_cache = False
             if decoder_input_ids is None:
                 decoder_input_ids = shift_tokens_right(
@@ -609,21 +649,24 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
             encoder_hidden_states=outputs.encoder_hidden_states,
             encoder_attentions=outputs.encoder_attentions,
         )
-    
-    
+
     @staticmethod
     def _expand_inputs_for_generation(
         input_ids: torch.LongTensor,
-        memory_input_ids:torch.LongTensor=None,
+        memory_input_ids: torch.LongTensor = None,
         expand_size: int = 1,
         is_encoder_decoder: bool = False,
         attention_mask: Optional[torch.LongTensor] = None,
         memory_attention_mask=None,
-        encoder_outputs  = None,
+        encoder_outputs=None,
         **model_kwargs,
     ):
         expanded_return_idx = (
-            torch.arange(input_ids.shape[0]).view(-1, 1).repeat(1, expand_size).view(-1).to(input_ids.device)
+            torch.arange(input_ids.shape[0])
+            .view(-1, 1)
+            .repeat(1, expand_size)
+            .view(-1)
+            .to(input_ids.device)
         )
         input_ids = input_ids.index_select(0, expanded_return_idx)
 
@@ -634,21 +677,29 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
         if attention_mask is not None:
             # print(attention_mask)
             model_kwargs["attention_mask"] = attention_mask.index_select(0, expanded_return_idx)
-        
+
         if memory_attention_mask is not None:
             # print(attention_mask)
-            model_kwargs["memory_attention_mask"] = memory_attention_mask.index_select(0, expanded_return_idx)
+            model_kwargs["memory_attention_mask"] = memory_attention_mask.index_select(
+                0, expanded_return_idx
+            )
 
         if is_encoder_decoder:
             if encoder_outputs is None:
-                raise ValueError("If `is_encoder_decoder` is True, make sure that `encoder_outputs` is defined.")
+                raise ValueError(
+                    "If `is_encoder_decoder` is True, make sure that `encoder_outputs` is defined."
+                )
             # encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.index_select(
             #     0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device)
             # )
-            encoder_outputs["src_last_hidden_state"] = encoder_outputs.src_last_hidden_state.index_select(
+            encoder_outputs[
+                "src_last_hidden_state"
+            ] = encoder_outputs.src_last_hidden_state.index_select(
                 0, expanded_return_idx.to(encoder_outputs.src_last_hidden_state.device)
             )
-            encoder_outputs["memory_last_hidden_state"] = encoder_outputs.memory_last_hidden_state.index_select(
+            encoder_outputs[
+                "memory_last_hidden_state"
+            ] = encoder_outputs.memory_last_hidden_state.index_select(
                 0, expanded_return_idx.to(encoder_outputs.memory_last_hidden_state.device)
             )
             model_kwargs["encoder_outputs"] = encoder_outputs
@@ -665,7 +716,7 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
         cross_attn_head_mask=None,
         use_cache=None,
         encoder_outputs=None,
-        **kwargs
+        **kwargs,
     ):
         # cut decoder_input_ids if past is used
         if past is not None:
@@ -681,5 +732,6 @@ class DualEncoderPegasusForConditionalGeneration(PegasusForConditionalGeneration
             "decoder_head_mask": decoder_head_mask,
             "cross_attn_head_mask": cross_attn_head_mask,
             "memory_attention_mask": memory_attention_mask,
-            "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
+            # change this to avoid caching (presumably for debugging)
+            "use_cache": use_cache,
         }

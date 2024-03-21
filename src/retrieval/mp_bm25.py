@@ -1,12 +1,12 @@
-import time
 import os
+import time
 from os import system as shell
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    dataset='cnndm'
-    query_lang='document'
-    ## build index
+    dataset = "cnndm"
+    query_lang = "document"
+    # build index
     cmd = ""
     cmd = f"python bm25.py "
     cmd += f"--build_index "
@@ -16,16 +16,16 @@ if __name__ == '__main__':
     print(cmd)
     shell(cmd)
 
-    ## search with multi process
-    
-    ## train 
-    os.makedirs(f"/data/{dataset}/bm25",exist_ok=True)
+    # search with multi process
+
+    # train
+    os.makedirs(f"/data/{dataset}/bm25", exist_ok=True)
     total_cnt = 0
     with open(f"/data/{dataset}/train.jsonl") as f:
         for line in f:
             total_cnt += 1
     num_workers = 15
-    num_samples_per_worker = (total_cnt // num_workers)+1
+    num_samples_per_worker = (total_cnt // num_workers) + 1
     for idx in range(num_workers):
         cmd = ""
         cmd += f"python bm25.py "
@@ -39,8 +39,8 @@ if __name__ == '__main__':
         cmd += f"&"
         # print(cmd)
         shell(cmd)
-    
-    ## dev
+
+    # dev
     cmd = ""
     cmd += f"python bm25.py "
     cmd += f"--search_index "
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     cmd += f"--output_file /data/{dataset}/bm25/dev.pkl "
     cmd += f"--search_file /data/{dataset}/dev.jsonl "
     shell(cmd)
-## test
+    # test
     cmd = ""
     cmd += f"python bm25.py "
     cmd += f"--search_index "
@@ -59,8 +59,7 @@ if __name__ == '__main__':
     cmd += f"--search_file /data/{dataset}/test.jsonl "
     shell(cmd)
     while True:
-        if len(os.listdir(f"/data/{dataset}/bm25")) == num_workers+2:
+        if len(os.listdir(f"/data/{dataset}/bm25")) == num_workers + 2:
             break
         else:
             time.sleep(1000)
-
