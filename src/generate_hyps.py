@@ -132,7 +132,7 @@ class Generator(ConditionalGenerator):
                         self.hparams.pretrained_model_path
                     )
                 else:
-                    self.model = BartModel.from_pretrained("facebook/bart-base")
+                    self.model = BartForConditionalGeneration.from_pretrained("facebook/bart-base")
                 # if "<MEMORY_SPLITTER>" not in self.tokenizer.vocab:
                 #     special_tokens_dict = {'additional_special_tokens': ["<MEMORY_SPLITTER>"]}
                 #     self.tokenizer.add_special_tokens(special_tokens_dict)

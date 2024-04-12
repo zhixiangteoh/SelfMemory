@@ -2,8 +2,7 @@
 __pycache__
 wandb
 .history
-.DS_Store
+*.DS_Store
 
 # don't include the data directory
-data/
 .vscode
