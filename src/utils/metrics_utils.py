@@ -1,3 +1,6 @@
+import argparse
+
+
 def get_rouge_score(hyps, refs):
     from compare_mt.rouge.rouge_scorer import RougeScorer
 
@@ -239,3 +242,30 @@ def get_nltk_bleu_score(hypothesis, references):
         smoothing_function=nltkbleu.SmoothingFunction(epsilon=1e-12).method1,
     )
     return (b1, b2, b3, b4)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hyp_path", type=str)
+    parser.add_argument("--ref_path", type=str)
+    parser.add_argument("--metric", type=str, default="bleu")
+    args = parser.parse_args()
+
+    hyps = []
+    with open(args.hyp_path, "r") as f:
+        for line in f:
+            hyps.append(line.strip())
+
+    refs = []
+    with open(args.ref_path, "r") as f:
+        for line in f:
+            refs.append(line.strip())
+
+    if args.metric == "bleu":
+        print(f"{args.metric} score:", get_bleu_score(hyps, refs))
+    elif args.metric == "rouge":
+        print(f"{args.metric} score:", get_rouge_score(hyps, refs))
+
+
+if __name__ == "__main__":
+    main()
