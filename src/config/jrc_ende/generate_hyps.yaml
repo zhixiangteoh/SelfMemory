@@ -1,8 +1,8 @@
 ## path
-data_path: ../data/ende/test.jsonl
+# data_path: ../data/ende/test_small.jsonl
 memory_path: null
-output_path: null
-memory_encoding: null
+# output_path: ../data/ende/test_small_hyp.txt
+memory_encoding: concate
 pretrained_model_path: null
 src: src
 trg: trg
@@ -15,5 +15,8 @@ seed: 980406
 ## generation
 gen_max_len: 118
 gen_min_len: 3
-num_beams: 2
-num_return_sequences: 2
+num_beams: 10
+num_return_sequences: 10
+num_beam_groups: 10
+early_stopping: true
+length_penalty: 1
