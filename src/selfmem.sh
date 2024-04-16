@@ -1,6 +1,16 @@
 #!/bin/bash
 
-# Pseudo code for SelfMemory process:
+# Translation of pseudocode for SelfMemory process.
+
+# generator = Trainer(model_input,memory)
+# candidates = generator(model_input,memory)
+# selector = Trainer(model_input,candidates)
+
+# for _ in range(iteration_k):
+#     candidates = generator(model_input,memory)
+#     memory = selector(model_input,candidates)
+#     hypothesis = generator(model_input,memory)
+#     current_score = metrics(hypothesis,reference)
 
 for ARGUMENT in "$@"
 do
@@ -116,6 +126,24 @@ do_one_iteration() {
     done
 }
 
+prune_beams() {
+    local expdir
+    local "${@}"
+
+    # rename top-$B _memories.txt (via associated score_.txt) to top-$B_memories.txt
+    score_files=$(ls ${expdir}/score*.txt)
+    score_files_sorted=$(for file in $(echo "$score_files"); do echo "$(cat $file) $file"; done | sort -gr | cut -d' ' -f2-)
+    # rename beam_${beam}-top_${eval_beam}_memories.txt to top_${i}_memories.txt
+    for i in $(seq 1 $B); do
+        score_file=$(echo "$score_files_sorted" | sed -n "${i}p")
+        # score file is in format score_beam${beam}_eval${eval_beam}.txt
+        beam=$(echo "$score_file" | sed -n 's/.*score_beam\([0-9]\)_eval[0-9].txt/\1/p')
+        eval_beam=$(echo "$score_file" | sed -n 's/.*score_beam[0-9]_eval\([0-9]\).txt/\1/p')
+        memory_file="${expdir}/beam_${beam}-top_${eval_beam}_memories.txt"
+        mv "${memory_file}" "${expdir}/top_${i}_memories.txt"
+    done
+}
+
 main() {
     iteration_0
     for k in $(seq 1 $K); do
@@ -124,18 +152,7 @@ main() {
             do_one_iteration i="$k" beam="$beam" expdir="${BASE_EXPDIR}/iter${k}"
         done
 
-        # rename top-$B _memories.txt (via associated score_.txt) to top-$B_memories.txt
-        score_files=$(ls ${BASE_EXPDIR}/iter${k}/score*.txt)
-        score_files_sorted=$(for file in $(echo "$score_files"); do echo "$(cat $file) $file"; done | sort -gr | cut -d' ' -f2-)
-        # rename beam_${beam}-top_${eval_beam}_memories.txt to top_${i}_memories.txt
-        for i in $(seq 1 $B); do
-            score_file=$(echo "$score_files_sorted" | sed -n "${i}p")
-            # score file is in format score_beam${beam}_eval${eval_beam}.txt
-            beam=$(echo "$score_file" | sed -n 's/.*score_beam\([0-9]\)_eval[0-9].txt/\1/p')
-            eval_beam=$(echo "$score_file" | sed -n 's/.*score_beam[0-9]_eval\([0-9]\).txt/\1/p')
-            memory_file="${BASE_EXPDIR}/iter${k}/beam_${beam}-top_${eval_beam}_memories.txt"
-            mv "${memory_file}" "${BASE_EXPDIR}/iter${k}/top_${i}_memories.txt"
-        done
+        prune_beams expdir="${BASE_EXPDIR}/iter${k}"
     done
 }
 
