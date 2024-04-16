@@ -249,6 +249,7 @@ def main():
     parser.add_argument("--hyp_path", type=str)
     parser.add_argument("--ref_path", type=str)
     parser.add_argument("--metric", type=str, default="bleu")
+    parser.add_argument("--output_path", type=str, default="score.txt")
     args = parser.parse_args()
 
     hyps = []
@@ -262,9 +263,14 @@ def main():
             refs.append(line.strip())
 
     if args.metric == "bleu":
-        print(f"{args.metric} score:", get_bleu_score(hyps, refs))
+        score = get_bleu_score(hyps, refs)
     elif args.metric == "rouge":
-        print(f"{args.metric} score:", get_rouge_score(hyps, refs))
+        score = get_rouge_score(hyps, refs)
+    
+    print(f"{args.metric} score:", score)
+    with open(args.output_path, "w") as f:
+        f.write(str(score))
+    
 
 
 if __name__ == "__main__":

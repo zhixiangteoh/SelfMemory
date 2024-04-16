@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--memory_scores_path', type=str, default=None)
     parser.add_argument('--B', type=int, default=2)
     parser.add_argument('--output_path', type=str, default='../data/ende/memory/')
+    parser.add_argument('--output_prefix', type=str, default='')
     args = parser.parse_args()
 
     # read `args.queries_path` (e.g., <SELFMEM_ROOT>/data/ende/test_small_src.txt) as queries
@@ -66,7 +67,7 @@ def main():
         for j in range(args.B):
             idx, score = sorted_scores[j]
             print(f'{j + 1}. {memory_documents[idx]} ({score})')
-            with open(f'{args.output_path}/top_{j+1}_memories.txt', 'a') as f:
+            with open(f'{args.output_path}/{args.output_prefix}top_{j+1}_memories.txt', 'a') as f:
                 f.write(f'{memory_documents[idx]}\n')
         print()
 
