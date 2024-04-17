@@ -38,6 +38,10 @@ NUM_BEAMS="${NUM_BEAMS:-10}"
 B="${B:-2}"
 K="${K:-3}"
 
+REPLACE_STR="replace"
+AUGMENT_STR="augment"
+MEMORY_UPDATE_SCHEME="${MEMORY_UPDATE_SCHEME:-"$REPLACE_STR"}" # "replace" or "augment" (:= append)
+
 generator() {
     local model_input memory candidates_path python_args
     local "${@}"
@@ -90,6 +94,7 @@ iteration_0() {
 do_one_iteration() {
     local i beam expdir
     local "${@}"
+    mkdir -p "${expdir}"
 
     local prev_memory_candidates_dir=""
     if [ "$i" -gt 1 ]; then
@@ -99,12 +104,17 @@ do_one_iteration() {
     fi
 
     local prev_memory_path="${prev_memory_candidates_dir}/top_${beam}_memories.txt"
-    mkdir -p "${expdir}"
-    mv "${prev_memory_path}" "${expdir}/memory.txt"
+    local memory_path="${expdir}/memory.txt"
+    if [ "$MEMORY_UPDATE_SCHEME" == "$REPLACE_STR" ]; then
+        cp "${prev_memory_path}" "${expdir}/memory.txt"
+    elif [ "$MEMORY_UPDATE_SCHEME" == "$AUGMENT_STR" ]; then
+        cp "${prev_memory_path}" "${expdir}/memory_prev.txt"
+        memory_path="${expdir}/memory_prev.txt"
+    fi
 
     local hyps_path="${expdir}/hyps_${NUM_BEAMS}_${beam}.txt"
     generator model_input="${DATA_PATH}" \
-        memory="${expdir}/memory.txt" \
+        memory="${memory_path}" \
         candidates_path="${hyps_path}" \
         python_args="--num_beams ${NUM_BEAMS} --num_return_sequences ${NUM_BEAMS} --num_beam_groups ${NUM_BEAMS}"
 
@@ -115,11 +125,18 @@ do_one_iteration() {
         python_args="--num_beams ${NUM_BEAMS} --B ${B} --output_prefix ${mem_output_prefix}"
 
     for eval_beam in $(seq 1 $B); do
+        if [ "$MEMORY_UPDATE_SCHEME" == "$AUGMENT_STR" ]; then
+            # append each line i in ${expdir}/${mem_output_prefix}top_${eval_beam}_memories.txt to line i in ${expdir}/memory_prev.txt
+            # and save to ${expdir}/$mem_output_prefix}top_${eval_beam}_memories.txt, via bash
+            paste -d ' ' "${expdir}/memory_prev.txt" "${expdir}/${mem_output_prefix}top_${eval_beam}_memories.txt" > "/tmp/${mem_output_prefix}top_${eval_beam}_memories.txt"
+            mv "/tmp/${mem_output_prefix}top_${eval_beam}_memories.txt" "${expdir}/${mem_output_prefix}top_${eval_beam}_memories.txt"
+        fi
+
         local eval_path="${expdir}/eval_${eval_beam}.txt"
         generator model_input="${DATA_PATH}" \
             memory="${expdir}/${mem_output_prefix}top_${eval_beam}_memories.txt" \
             candidates_path="${eval_path}" \
-            python_args="--num_beams 1 --num_return_sequences 1 --num_beam_groups 1"
+            python_args="--num_beams 1 --num_return_sequences 1 --num_beam_groups 1 --early_stopping false"
         metrics hypothesis="${eval_path}" \
             reference="${TRG_PATH}" \
             python_args="--output_path ${expdir}/score_beam${beam}_eval${eval_beam}.txt"
@@ -136,6 +153,7 @@ prune_beams() {
     # rename beam_${beam}-top_${eval_beam}_memories.txt to top_${i}_memories.txt
     for i in $(seq 1 $B); do
         score_file=$(echo "$score_files_sorted" | sed -n "${i}p")
+        mv "${score_file}" "${expdir}/top_${i}_score.txt"
         # score file is in format score_beam${beam}_eval${eval_beam}.txt
         beam=$(echo "$score_file" | sed -n 's/.*score_beam\([0-9]\)_eval[0-9].txt/\1/p')
         eval_beam=$(echo "$score_file" | sed -n 's/.*score_beam[0-9]_eval\([0-9]\).txt/\1/p')

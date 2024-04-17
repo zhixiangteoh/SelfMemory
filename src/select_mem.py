@@ -54,7 +54,7 @@ def main():
     # for each query in queries,
     # print the top-B memory documents with the highest scores for the query
     for i, query in enumerate(queries):
-        print(f'Query {i}: {query}')
+        # print(f'Query {i}: {query}')
         # NOTE: ignoring all other metrics except colbert for now
         # for metric in memory_scores:
         # print(f'{metric}:')
@@ -66,10 +66,10 @@ def main():
         sorted_scores = sorted(enumerate(scores_for_query), key=lambda x: x[1], reverse=True)
         for j in range(args.B):
             idx, score = sorted_scores[j]
-            print(f'{j + 1}. {memory_documents[idx]} ({score})')
+            # print(f'{j + 1}. {memory_documents[idx]} ({score})')
             with open(f'{args.output_path}/{args.output_prefix}top_{j+1}_memories.txt', 'a') as f:
                 f.write(f'{memory_documents[idx]}\n')
-        print()
+        # print()
 
 
 if __name__ == '__main__':
