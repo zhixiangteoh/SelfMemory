@@ -1,6 +1,6 @@
 <div align="center">
 
-# Lift Yourself Up: Retrieval-augmented Text Generation with Self Memory
+# Efficient and Precise Self-Memory for RAG
 
 [![lightning](https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
 [![transformers](https://img.shields.io/badge/Transformers-orange)](https://github.com/huggingface/transformers)
