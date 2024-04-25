@@ -25,14 +25,17 @@ done
 ACCELERATOR="${ACCELERATOR:-gpu}"
 
 DATA_DIR="${DATA_DIR:-../data/ende}"
+INITIAL_MEMORY_SUBPATH="${INITIAL_MEMORY_SUBPATH:-}"
 
 EXPNAME="${EXPNAME:-baseline}"
+
 BASE_EXPDIR="${DATA_DIR}/memory/${EXPNAME}"
 mkdir -p "${BASE_EXPDIR}"
 
 DATA_PATH="${DATA_DIR}/test_small.jsonl"
 SRC_PATH="${DATA_DIR}/test_small_src.txt"
 TRG_PATH="${DATA_DIR}/test_small_trg.txt"
+
 
 NUM_BEAMS="${NUM_BEAMS:-10}"
 B="${B:-2}"
@@ -83,6 +86,7 @@ iteration_0() {
     local hyps_path="${BASE_EXPDIR}/hyps_${NUM_BEAMS}.txt"
     generator model_input="${DATA_PATH}" \
         candidates_path="${hyps_path}" \
+        memory="${DATA_DIR}/${INITIAL_MEMORY_SUBPATH}" \
         python_args="--num_beams ${NUM_BEAMS} --num_return_sequences ${NUM_BEAMS} --num_beam_groups ${NUM_BEAMS}"
 
     selector model_input="${SRC_PATH}" \
