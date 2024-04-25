@@ -158,7 +158,11 @@ cd /mydata/SelfMemory/src
 
 ---
 
-## Retrieval-Augmented Generator
+## SelfMem components
+
+The following sections describe the main components of the SelfMem framework, including the retrieval-augmented generator and memory selector, and how to train and evaluate them. One of our main contributions is implementing the pseudo-code for the iterative generation/memory selection process.
+
+### Retrieval-Augmented Generator
 Here we use JRC-Acqius EnDe dataset as example:
 ```bash
 cd your/work/dir/src
@@ -183,8 +187,7 @@ python train_generator.py \
     --memory_dir ../data/jrc_ende/memory/bm25 
 ```
 
-
-## Memory Selector
+### Memory Selector
 First we use the trained generator to generate candidates
 ```bash
 cd your/work/dir/src
