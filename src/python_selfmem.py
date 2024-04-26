@@ -37,17 +37,9 @@ def iteration_0(BASE_EXPDIR, DATA_PATH, SRC_PATH, TRG_PATH, NUM_BEAMS, B):
     generator(DATA_PATH, None, hyps_path, f"--num_beams {NUM_BEAMS} --num_return_sequences {NUM_BEAMS} --num_beam_groups {NUM_BEAMS}")
     selector(SRC_PATH, hyps_path, BASE_EXPDIR, f"--num_beams {NUM_BEAMS} --B {B}")
 
-def do_one_iteration(BASE_EXPDIR, DATA_PATH, SRC_PATH, TRG_PATH, NUM_BEAMS, B, K, MEMORY_UPDATE_SCHEME, i, beam):
+def do_one_iteration(BASE_EXPDIR, DATA_PATH, SRC_PATH, TRG_PATH, NUM_BEAMS, B, K, MEMORY_UPDATE_SCHEME, i, beam, memory_prev):
     expdir = os.path.join(BASE_EXPDIR, f"iter{i}")
     os.makedirs(expdir, exist_ok=True)
-    prev_memory_candidates_dir = os.path.join(BASE_EXPDIR, f"iter{i-1}") if i > 1 else BASE_EXPDIR
-    prev_memory_path = os.path.join(prev_memory_candidates_dir, f"top_{beam}_memories.txt")
-    memory_path = os.path.join(expdir, "memory.txt")
-    if MEMORY_UPDATE_SCHEME == "replace":
-        shutil.copy(prev_memory_path, memory_path)
-    elif MEMORY_UPDATE_SCHEME == "augment":
-        shutil.copy(prev_memory_path, os.path.join(expdir, "memory_prev.txt"))
-        memory_path = os.path.join(expdir, "memory_prev.txt")
     hyps_path = os.path.join(expdir, f"hyps_{NUM_BEAMS}_{beam}.txt")
     generator(DATA_PATH, memory_path if MEMORY_UPDATE_SCHEME == "augment" else None, hyps_path, f"--num_beams {NUM_BEAMS} --num_return_sequences {NUM_BEAMS} --num_beam_groups {NUM_BEAMS}")
     mem_output_prefix = f"beam_{beam}-"
@@ -72,6 +64,18 @@ def prune_beams(BASE_EXPDIR, B, K):
             eval_beam = int(score_file.split("/")[-1].split(".")[0].split("_")[2][-1])
             memory_file = os.path.join(expdir, f"beam_{beam}-top_{eval_beam}_memories.txt")
             shutil.move(memory_file, os.path.join(expdir, f"top_{i}_memories.txt"))
+
+
+def prepare_memory_prev_array(BASE_EXPDIR, beam, MEMORY_UPDATE_SCHEME, i):
+    prev_memory_candidates_dir = os.path.join(BASE_EXPDIR, f"iter{i-1}") if i > 1 else BASE_EXPDIR
+    prev_memory_path = os.path.join(prev_memory_candidates_dir, f"top_{beam}_memories.txt")
+    
+    # memory_path = os.path.join(expdir, "memory.txt")
+    # if MEMORY_UPDATE_SCHEME == "replace":
+    #     shutil.copy(prev_memory_path, memory_path)
+    # elif MEMORY_UPDATE_SCHEME == "augment":
+    #     shutil.copy(prev_memory_path, os.path.join(expdir, "memory_prev.txt"))
+    #     memory_path = os.path.join(expdir, "memory_prev.txt")
 
 def main(args):
     ACCELERATOR = args.accelerator
